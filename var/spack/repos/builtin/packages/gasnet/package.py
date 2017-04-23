@@ -40,7 +40,7 @@ class Gasnet(AutotoolsPackage):
     version('1.24.0', 'c8afdf48381e8b5a7340bdb32ca0f41a')
 
     variant('ibv', default=False, description="Support InfiniBand")
-    variant('mpi', default=False, description="Support MPI")
+    variant('mpi', default=True, description="Support MPI")
 
     depends_on('mpi', when='+mpi')
 
@@ -52,7 +52,8 @@ class Gasnet(AutotoolsPackage):
             "--enable-par",
             "--enable-smp",
             "--enable-udp",
-            "--enable-mpi-compat",
+            "--enable-mpi-compat"
+            if '+mpi' in self.spec else '--disable-mpi-compat',
             "--enable-smp-safe",
             "--enable-segment-fast",
             "--disable-aligned-segments",
@@ -60,5 +61,9 @@ class Gasnet(AutotoolsPackage):
             # See the Legion webpage for details on when to/not to use.
             "--disable-pshm",
             "--with-segment-mmap-max=64MB",
+            # for consumers with shared libs
+            "CC=cc %s" % self.compiler.pic_flag,
+            "CXX=c++ %s" % self.compiler.pic_flag,
+            "MPI_CC=mpicc %s" % self.compiler.pic_flag
         ]
         return args
