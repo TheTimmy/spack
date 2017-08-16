@@ -62,6 +62,9 @@ class Rkt(AutotoolsPackage):
     depends_on('libcap')
     depends_on('openssl')
 
+
+    depends_on('autogen')
+
     # Use autotools to create the package
     depends_on('autoconf', type='build')
     depends_on('automake', type='build')
@@ -71,7 +74,7 @@ class Rkt(AutotoolsPackage):
     def configure_args(self):
         args = [
             '--disable-functional-tests',
-            '--with-stage1-flavors=kvm,fly',
+            '--with-stage1-flavors=kvm,src,fly',
             '--enable-tpm=no',
             '--enable-sdjournal=no'
         ]
