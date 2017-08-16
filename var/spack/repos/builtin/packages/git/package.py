@@ -142,7 +142,7 @@ class Git(AutotoolsPackage):
 
     depends_on('curl')
     depends_on('expat')
-    depends_on('gettext')
+    #depends_on('gettext')
     depends_on('libiconv')
     depends_on('openssl')
     depends_on('pcre')
@@ -154,9 +154,9 @@ class Git(AutotoolsPackage):
     depends_on('libtool',  type='build')
     depends_on('m4',       type='build')
 
-    def setup_environment(self, spack_env, run_env):
-        spack_env.set('LDFLAGS', '-L{0} -lintl'.format(
-            self.spec['gettext'].prefix.lib))
+    #def setup_environment(self, spack_env, run_env):
+    #    spack_env.set('LDFLAGS', '-L{0} -lintl'.format(
+    #        self.spec['gettext'].prefix.lib))
 
     def configure_args(self):
         spec = self.spec
