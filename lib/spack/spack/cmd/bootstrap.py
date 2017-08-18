@@ -29,7 +29,7 @@ from llnl.util.filesystem import join_path, mkdirp
 
 import spack
 from spack.util.executable import ProcessError, which
-from spack.util.chroot import build_chroot_enviroment, remove_chroot_enviroment
+from spack.util.chroot import build_chroot_enviroment, remove_chroot_enviroment, run_command
 
 
 _SPACK_UPSTREAM = 'https://github.com/llnl/spack'
@@ -53,7 +53,7 @@ def setup_parser(subparser):
         '--cores', action='store', dest='cores',
         help="the amount of cores dedicated for the vm")
     subparser.add_argument(
-        '--threads', action='store', dest='threads',
+        '--size', action='store', dest='size',
         help="the amount of threads dedicated for the vm")
     subparser.add_argument(
         '--memory', action='store', dest='memory',
@@ -63,6 +63,12 @@ def setup_parser(subparser):
         help="the location for the vm to store the data")
     subparser.add_argument(
         '--iso', action='store', dest='iso',
+        help="the iso to boot from")
+    subparser.add_argument(
+        '--username', action='store', dest='username',
+        help="the iso to boot from")
+    subparser.add_argument(
+        '--password', action='store', dest='password',
         help="the iso to boot from")
 
 
@@ -110,7 +116,7 @@ def bootstrap(parser, args):
     password = args.password
 
     cores = args.cores
-    threads = args.threads
+    size = args.size
     memory = args.memory
     iso = args.iso
 
@@ -121,11 +127,11 @@ def bootstrap(parser, args):
 
     if isolate:
         #generate and remove enviroment
-        build_chroot_enviroment(cores, threads, memory, prefix, iso)
+        build_chroot_enviroment(cores, memory, prefix, size, iso)
 
         # copy the files via git to /home/spack in the vm
-        run_command(username, password,
-                    'mkdir /home/spack',
+        run_command(username,
+                    'mkdir -p /home/spack',
                     'cd /home/spack/',
                     'git init --shared -q',
                     'git remote add origin {0}'.format(origin_url),

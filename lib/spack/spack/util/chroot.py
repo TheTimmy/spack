@@ -27,11 +27,12 @@ import os
 import sys
 import copy
 import spack
+import libvirt
 import subprocess
 import llnl.util.tty as tty
 from itertools import product
 from spack.util.executable import which
-from llnl.util.filesystem import join_path
+from llnl.util.filesystem import join_path, mkdirp
 
 
 def mount_bind_path(realpath, chrootpath):
@@ -59,56 +60,21 @@ def umount_bind_path(chrootpath):
     if os.path.exists(chrootpath):
         os.system ("sudo umount -l %s" % (chrootpath))
 
-def build_chroot_enviroment(cores, threads, memory, disk, iso):
-    if os.path.ismount(dir):
-        tty.die("The path is already a bootstraped enviroment")
-
-    buildXMLString = """
-<domain type="kvm">
-    <name>Spack-VM</name>
-    <cpu>
-        <topology cores="{0}" sockets="1" threads="{1}" />
-    </cpu>
-    <uuid>Spack_VM-97b2-11e4-86bf-001e682ee78a</uuid>
-    <memory unit="MB">{2}</memory>
-    <currentMemory unit="MB">{2}</currentMemory>
-    <os>
-        <type>hvm</type>
-        <boot dev="hd" />
-    </os>
-    <features>
-        <acpi />
-        <apic />
-        <pae />
-    </features>
-    <clock offset="utc" />
-    <on_poweroff>destroy</on_poweroff>
-    <on_reboot>restart</on_reboot>
-    <on_crash>restart</on_crash>
-    <devices>
-        <disk device="disk" type="file">
-            <driver cache="none" name="qemu" type="raw" />
-            <source file="{3}" />
-            <target dev="hda" />
-            <address bus="0" controller="0" target="0" type="drive" unit="0" />
-        </disk>
-        <disk device="cdrom" type="file">
-            <source file="{4}" />
-            <driver name="qemu" type="raw" />
-            <target bus="ide" dev="hdc" />
-            <readyonly />
-            <address bus="1" controller="0" target="0" type="drive" unit="0" />
-        </disk>
-        <interface type="network">
-            <source network="default" />
-        </interface>
-        <graphics port="-1" type="vnc" />
-    </devices>
-</domain>""".format(cores, threads, memory, disk, iso)
-
-    connection = libvirt.open('qemu:///system')
-    connection.defineXML(buildXMLString)
-    connection.close()
+def build_chroot_enviroment(cores, memory, disk, size, iso):
+    # use virt-install to handle the installation and to provide a
+    # setup screen for the user. alternatively this could be done here
+    return
+    install = which('virt-install')
+    install('--virt-type=kvm',
+            '--name=Spack-VM',
+            '--ram={0}'.format(memory),
+            '--vcpus={0}'.format(cores),
+            '--hvm',
+            '--cdrom={0}'.format(iso),
+            '--network=default',
+            '--disk',
+            'path={0}.qcow2,size={1},bus=virtio,format=qcow2'.format(disk, size))
+    tty.msg("successfully created the bootstrap environment")
 
 def remove_chroot_enviroment(dir):
     connection = libvirt.open('qemu:///system')
@@ -116,32 +82,19 @@ def remove_chroot_enviroment(dir):
     virtual_machine.undefine()
     connection.close()
 
-def run_command(username, password, commands):
-    connection = libvirt.open('qemu:///system')
-    virtual_machine = connection.lookupByName("Spack-VM")
-    if virtual_machine == None:
-        tty.die("Could not connect to the virtual machine")
+def run_command(username, *commands):
+    bash = which('virsh', required=True)
+    grep = which('grep', required=True)
+    arp = which('arp', required=True)
+    ssh = which('ssh', required=True)
 
-    networkInterface = virtual_machine.interfaceAddresses(libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_AGENT, 0)
-
-    ipAddress = None
-    for (name, val) in networkInterface.iteritems():
-        if val['addrs']:
-            for ipaddr in val['addrs']:
-                if ipaddr['type'] == libvirt.VIR_IP_ADDR_TYPE_IPV4:
-                    ipAddress = ipaddr['addr']
-                    break
-        if ipAddress != None
-            break
-
-    if ipAddress == None:
-        tty.die("Could not connect the the virtual machine")
+    vms = bash('domiflist', 'Spack-VM', output=str)
+    mac = re.search(r'(([0-9a-f]{2}:){5}[0-9a-f]{2})', vms).group(0)
+    ips = arp('-en', output=str)
+    ip = re.search(r'(([0-9]{3}\.){3}([0-9]{2}))\s+\w+\s+' + mac, ips).group(1)
 
     command = ' && '.join([str(x) for x in commands])
-
-    ssh = which('ssh')
-    ssh('-t', '-p {0}'.format(password), '{0}@{1}'.format(username, ipAddress), command)
-    connection.close()
+    ssh('-t', '{0}@{1}'.format(username, ip), command)
 
 def isolate_enviroment(username, password):
     tty.msg("Isolate spack")
