@@ -131,8 +131,8 @@ def bootstrap(parser, args):
 
         # copy the files via git to /home/spack in the vm
         run_command(username,
-                    'mkdir -p /home/spack',
-                    'cd /home/spack/',
+                    'mkdir -p $HOME/spack'
+                    'cd $HOME/spack',
                     'git init --shared -q',
                     'git remote add origin {0}'.format(origin_url),
                     'git fetch origin {0}:refs/remotes/origin/{0} -n -q'.format(branch),

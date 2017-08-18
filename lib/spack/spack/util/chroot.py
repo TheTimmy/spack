@@ -27,7 +27,6 @@ import os
 import sys
 import copy
 import spack
-import libvirt
 import subprocess
 import llnl.util.tty as tty
 from itertools import product
@@ -77,10 +76,7 @@ def build_chroot_enviroment(cores, memory, disk, size, iso):
     tty.msg("successfully created the bootstrap environment")
 
 def remove_chroot_enviroment(dir):
-    connection = libvirt.open('qemu:///system')
-    virtual_machine = connection.lookupByName("Spack-VM")
-    virtual_machine.undefine()
-    connection.close()
+    pass
 
 def run_command(username, *commands):
     bash = which('virsh', required=True)
@@ -98,5 +94,4 @@ def run_command(username, *commands):
 
 def isolate_enviroment(username, password):
     tty.msg("Isolate spack")
-
     run_command(username, password, '/home/spack/bin/spack {0}'.format(sys.argv[1:]))
