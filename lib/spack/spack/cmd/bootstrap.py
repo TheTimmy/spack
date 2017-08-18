@@ -127,12 +127,12 @@ def bootstrap(parser, args):
 
     if isolate:
         #generate and remove enviroment
-        build_chroot_enviroment(cores, memory, prefix, size, iso)
+        build_chroot_enviroment(username, cores, memory, prefix, size, iso)
 
         # copy the files via git to /home/spack in the vm
         run_command(username,
-                    'mkdir -p $HOME/spack'
-                    'cd $HOME/spack',
+                    'mkdir -p $HOME/{0}/spack'.format(username),
+                    'cd $HOME/{0}/spack'.format(username),
                     'git init --shared -q',
                     'git remote add origin {0}'.format(origin_url),
                     'git fetch origin {0}:refs/remotes/origin/{0} -n -q'.format(branch),

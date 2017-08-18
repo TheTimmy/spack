@@ -59,10 +59,13 @@ def umount_bind_path(chrootpath):
     if os.path.exists(chrootpath):
         os.system ("sudo umount -l %s" % (chrootpath))
 
-def build_chroot_enviroment(cores, memory, disk, size, iso):
+def build_chroot_enviroment(username, cores, memory, disk, size, iso):
     # use virt-install to handle the installation and to provide a
     # setup screen for the user. alternatively this could be done here
-    return
+    lockFile = os.path.join(spack.spack_root, '.env')
+    with open(lockFile, 'w') as f:
+        f.write(username)
+
     install = which('virt-install')
     install('--virt-type=kvm',
             '--name=Spack-VM',
@@ -76,15 +79,18 @@ def build_chroot_enviroment(cores, memory, disk, size, iso):
     tty.msg("successfully created the bootstrap environment")
 
 def remove_chroot_enviroment(dir):
-    pass
+    virsh = which('virsh', required=True)
+    virsh('shutdown Spack-VM')
+    virsh('destory Spack-VM')
+    virsh('undefine Spack-VM')
 
 def run_command(username, *commands):
-    bash = which('virsh', required=True)
+    virsh = which('virsh', required=True)
     grep = which('grep', required=True)
     arp = which('arp', required=True)
     ssh = which('ssh', required=True)
 
-    vms = bash('domiflist', 'Spack-VM', output=str)
+    vms = virsh('domiflist', 'Spack-VM', output=str)
     mac = re.search(r'(([0-9a-f]{2}:){5}[0-9a-f]{2})', vms).group(0)
     ips = arp('-en', output=str)
     ip = re.search(r'(([0-9]{3}\.){3}([0-9]{2}))\s+\w+\s+' + mac, ips).group(1)
@@ -92,6 +98,17 @@ def run_command(username, *commands):
     command = ' && '.join([str(x) for x in commands])
     ssh('-t', '{0}@{1}'.format(username, ip), command)
 
-def isolate_enviroment(username, password):
+def is_isolated_environment():
+    lockFile = os.path.join(spack.spack_root, '.env')
+    return os.path.exists(lockFile)
+
+def isolate_enviroment(username):
     tty.msg("Isolate spack")
-    run_command(username, password, '/home/spack/bin/spack {0}'.format(sys.argv[1:]))
+
+    if username == None:
+        lockFile = os.path.join(spack.spack_root, '.env')
+        with open(lockFile, 'r') as f:
+            username = f.readline()
+
+    arguments = ' '.join(sys.argv[1:])
+    run_command(username, '$HOME/spack/spack/bin/spack {0}'.format(arguments))

@@ -27,10 +27,12 @@ import llnl.util.tty as tty
 import spack
 import spack.cmd
 import os
+from spack.util.executable import which
 from llnl.util.filesystem import join_path, mkdirp
 from spack.util.chroot import build_chroot_enviroment,  \
                               remove_chroot_enviroment, \
-                              isolate_enviroment
+                              isolate_enviroment,       \
+                              run_command
 
 description = "starts an isolated bash session for spack"
 section = "admin"
@@ -38,57 +40,37 @@ level = "long"
 
 def setup_parser(subparser):
     subparser.add_argument(
-        '--build-enviroment', action='store_true', dest='build_enviroment',
-        help="startup the isolation mode enviroment")
+        '--start-environment', action='store_true', dest='start_enviroment',
+        help="start or generate a environment")
     subparser.add_argument(
-        '--remove-enviroment', action='store_false', dest='build_enviroment',
-        help="shutdown the isolation mode enviroment")
+        '--stop-environment', action='store_true', dest='stop_environment',
+        help="stop the environment")
     subparser.add_argument(
-        '--start-enviroment', action='store_true', dest='start_enviroment',
-        help="start a local bash in the generated enviroment")
+        '--remove-environment', action='store_true', dest='remove_environment',
+        help="delete the environment")
     subparser.add_argument(
-        '-f', '--force', action='store_true', dest='force',
-        help="start a local bash in the generated enviroment")
-
+        '--cli', action='store_true', dest='cli',
+        help="connect to a bash session with a ssh client to the generated environment")
+    subparser.add_argument(
+        '--username', action='store', dest='username',
+        help="the iso to boot from")
 
 def isolate(parser, args):
-    lockFile = os.path.join(spack.spack_root, '.env')
-
-    force = args.force
-    build_enviroment = args.build_enviroment
-    if build_enviroment:
-        if not os.path.exists(lockFile) or force:
-            tty.msg("Startup bootstraped enviroment")
-
-            home = os.path.join(spack.spack_bootstrap_root, 'home')
-            tmp = os.path.join(spack.spack_bootstrap_root, 'tmp')
-            install_dir = os.path.join(home, 'spack')
-
-            mkdirp(home)
-            mkdirp(tmp)
-            mkdirp(install_dir)
-
-            build_chroot_enviroment(spack.spack_bootstrap_root)
-
-            #update the config to set the isolation mode active
-            config = spack.config.get_config("config", "site")
-            config['isolate'] = True
-            spack.config.update_config("config", config, "site")
-            with open(lockFile, "w") as out:
-                pass
-    else:
-        if os.path.exists(lockFile) or force:
-            tty.msg("Shutdown bootstraped enviroment")
-
-            config = spack.config.get_config("config", "site")
-            config['isolate'] = False
-            spack.config.update_config("config", config, "site")
-
-            remove_chroot_enviroment(spack.spack_bootstrap_root)
-            os.remove(lockFile)
-
+    username = args.username
     if args.start_enviroment:
-        isolate_enviroment()
+        tty.msg("Build bootstraped enviroment")
+        virsh = which('virsh', required=True)
+        virsh('start Spack-VM')
 
-        # TODO rewrite me to use unshare
-        #os.system("sudo chroot %s /bin/bash" % (spack.spack_bootstrap_root))
+    if args.stop_environment:
+        tty.msg("Stop bootstraped enviroment")
+        virsh = which('virsh', required=True)
+        virsh('start Spack-VM')
+
+    if args.remove_environment:
+        tty.msg("Remove bootstraped enviroment")
+        remove_chroot_enviroment(spack.spack_bootstrap_root)
+
+    if args.cli:
+        tty.msg("Start bash session")
+        run_command(username, 'bash')

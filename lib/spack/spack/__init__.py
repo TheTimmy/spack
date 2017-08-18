@@ -33,6 +33,7 @@ import llnl.util.tty as tty
 
 from spack.util.chroot import build_chroot_enviroment,  \
                               remove_chroot_enviroment, \
+                              is_isolated_environment,  \
                               isolate_enviroment
 
 #-----------------------------------------------------------------------------
@@ -168,10 +169,9 @@ isolate = _config.get('isolate', False)
 
 # check sys.argv[1] agaist isolate allow the call to
 # isolate --remove-enviroment without being trapped inside a chroot jail
-if isolate and sys.argv[1] != 'isolate':
-    if spack_root != "/home/spack":
-        isolate_enviroment()
-        sys.exit(0) #exit main process because it wasn't called in a chroot jail
+if is_isolated_environment() and sys.argv[1] != 'isolate':
+    isolate_enviroment(None)
+    sys.exit(0) #exit main process because it wasn't called in a chroot jail
 
 #-----------------------------------------------------------------------------
 # When packages call 'from spack import *', this extra stuff is brought in.
