@@ -33,209 +33,6 @@ from itertools import product
 from spack.util.executable import which
 from llnl.util.filesystem import join_path
 
-# Packages to include into the chroot enviroment
-PACKAGES = [
-    'bash',
-    'curl',
-    'gcc',
-    'g++',
-    'lsb-release',
-
-    # only exact matches
-    ('apt-cache', True),
-    ('coreutils', True),
-    ('diffutils', True),
-    ('findutils', True),
-    ('gawk', True),
-    ('grep', True),
-    ('gzip', True),
-    ('libc5', True),
-    ('libc5-dev', True),
-    ('libc6', True),
-    ('libc6-dev', True),
-    ('linux-libc-dev', True),
-    ('make', True),
-    ('mawk', True),
-    ('patch', True),
-    ('perl', True),
-    ('python', True),
-    ('python3', True),
-    ('sed', True),
-
-    ('strace', True),
-]
-
-# Paths which are always needed
-DEFAULT_PATHS = [
-    '/usr/bin/awk',
-
-    # certificaes for Ubuntu 14.x
-    '/usr/lib/ssl',
-    '/usr/share/ca-certificates',
-
-    #'/bin',
-    '/dev',
-    '/etc',
-    '/lib',
-    '/lib64',
-    '/proc',
-    '/run',
-    '/sys',
-]
-
-# Package which are unnecessary and shouldn't be included
-EXCLUDE_PACKAGES = [
-    # unnecessary packages
-    'base-files',
-    'libpcre3',
-]
-
-# Paths which shouldn't be included into the chroot enviroment
-EXCLUDE_PATHS = [
-    '/tmp',
-    '/sbin',
-    '/home',
-    '/boot',
-    '/root',
-    '/lost+found',
-    '/cdrom',
-]
-
-def find_dependencies(package_name, package_cache):
-    apt_cache = spack.util.executable.which("apt-cache", requred=True)
-    cmd = 'LANG=C %s depends %s' % (apt_cache.exe[0], package_name)
-    dependencies = os.popen(cmd).read()
-
-    results = set()
-    reg = re.compile(r'(\s+)?(PreDepends|Depends):\s*([^\s]+)')
-    for dependency in dependencies.split('\n'):
-        found = reg.match(dependency)
-        if found:
-            name = found.group(3)
-            if name not in EXCLUDE_PACKAGES:
-                results.add(name)
-                if name not in package_cache:
-                    package_cache.add(name)
-                    results.update(find_dependencies(name, package_cache))
-
-    return results
-
-
-def find_packages(name, exact, package_cache):
-    dpkg = spack.util.executable.which("dpkg", requred=True)
-    installedPackages = dpkg('-l',output=str)
-    name = name.replace('\n', '').replace('+', r'\+')
-
-    result = set()
-    if not exact:
-        regStr = r'ii\s+(([^\s]*' + name + \
-                 r'[^\s|:]*)(:[^\s]+)?)\s+[^\s]+\s+[^\s]+\s+[^\n]+'
-    else:
-        regStr = r'ii\s+((' + name + r')(:[^\s]+)?)\s+[^\s]+\s+[^\s]+\s+[^\n]+'
-
-    regex = re.compile(regStr)
-    for package in installedPackages.split('\n'):
-        found = regex.match(package)
-        if found:
-            package_name = found.group(2)
-            dependencies = find_dependencies(package_name, package_cache)
-
-            result.add(name)
-            result.update(dependencies)
-    return result
-
-
-def find_package_files(package_name, file_cache):
-    if package_name in file_cache:
-        return file_cache[package_name]
-
-    dpkg = spack.util.executable.which("dpkg", requred=True)
-
-    package_name = package_name.replace('\n', '')
-    # TODO: Only works with popen and produces an invalid command without?
-    results = os.popen("%s -L %s" % (dpkg.exe[0], package_name)).read()
-
-    toRemove = set(['/.'])
-    results = set(results.split('\n'))
-    for file in results:
-        path = os.path.dirname(file)
-        while path != '/':
-            if path in results:
-                toRemove.add(path)
-                break
-            path = os.path.dirname(path)
-
-    for dub in toRemove:
-        if dub in results:
-            results.remove(dub)
-
-    for result in results:
-        if result == "/usr/bin":
-            print "USER:", package_name
-
-    file_cache[package_name] = list(results)
-    return file_cache[package_name]
-
-
-def merge_files(files, libraries):
-    merged = 0
-    final = set()
-    for file in files:
-        if not os.path.exists(file):
-            continue
-
-        dirname = os.path.dirname(file)
-        if dirname in final:
-            continue
-
-        files = [join_path(dirname, x) for x in os.listdir(dirname)]
-        count = sum([(1 if x in libraries else 0) for x in files])
-        if count == len(files):
-            merged += 1
-            final.add(dirname)
-        else:
-            final.add(file)
-
-    if merged != 0:
-        return merge_files(final, libraries)
-    return final
-
-def get_all_library_directories():
-    libraries = set(DEFAULT_PATHS)
-
-    package_cache = set()
-    file_cache = dict()
-    for package in PACKAGES:
-        if type(package) is tuple:
-            name, exact = package[0], package[1]
-        else:
-            name, exact = package, False
-
-        tty.msg("Search for %s " % (name))
-        package_names = find_packages(name, exact, package_cache)
-        for package_name in package_names:
-            for file in find_package_files(package_name, file_cache):
-                if file and file not in EXCLUDE_PATHS:
-                    libraries.add(file)
-
-    tty.msg("Compute amount of required files: %d" % (len(libraries)))
-
-    final = merge_files(libraries, libraries)
-    for lib in copy.deepcopy(final):
-        path = os.path.dirname(lib)
-        # Don't mount documentation files
-        if 'doc' in path or 'man' in path or '.mo' in path or '.po' in path:
-            final.remove(lib)
-        else:
-            while path and path != '/':
-                if path in final:
-                    final.remove(lib)
-                    break
-                path = os.path.dirname(path)
-
-    tty.msg("Compressed required files to: %d" % (len(final)))
-    return final
-
 
 def mount_bind_path(realpath, chrootpath):
     mount = True
@@ -262,40 +59,91 @@ def umount_bind_path(chrootpath):
     if os.path.exists(chrootpath):
         os.system ("sudo umount -l %s" % (chrootpath))
 
-def build_chroot_enviroment(dir):
+def build_chroot_enviroment(cores, threads, memory, disk, iso):
     if os.path.ismount(dir):
         tty.die("The path is already a bootstraped enviroment")
 
-    libraries = get_all_library_directories()
-    for lib in libraries:
-        mount_bind_path(lib, os.path.join(dir, lib[1:]))
+    buildXMLString = """
+<domain type="kvm">
+    <name>Spack-VM</name>
+    <cpu>
+        <topology cores="{0}" sockets="1" threads="{1}" />
+    </cpu>
+    <uuid>Spack_VM-97b2-11e4-86bf-001e682ee78a</uuid>
+    <memory unit="MB">{2}</memory>
+    <currentMemory unit="MB">{2}</currentMemory>
+    <os>
+        <type>hvm</type>
+        <boot dev="hd" />
+    </os>
+    <features>
+        <acpi />
+        <apic />
+        <pae />
+    </features>
+    <clock offset="utc" />
+    <on_poweroff>destroy</on_poweroff>
+    <on_reboot>restart</on_reboot>
+    <on_crash>restart</on_crash>
+    <devices>
+        <disk device="disk" type="file">
+            <driver cache="none" name="qemu" type="raw" />
+            <source file="{3}" />
+            <target dev="hda" />
+            <address bus="0" controller="0" target="0" type="drive" unit="0" />
+        </disk>
+        <disk device="cdrom" type="file">
+            <source file="{4}" />
+            <driver name="qemu" type="raw" />
+            <target bus="ide" dev="hdc" />
+            <readyonly />
+            <address bus="1" controller="0" target="0" type="drive" unit="0" />
+        </disk>
+        <interface type="network">
+            <source network="default" />
+        </interface>
+        <graphics port="-1" type="vnc" />
+    </devices>
+</domain>""".format(cores, threads, memory, disk, iso)
+
+    connection = libvirt.open('qemu:///system')
+    connection.defineXML(buildXMLString)
+    connection.close()
 
 def remove_chroot_enviroment(dir):
-    libraries = get_all_library_directories()
+    connection = libvirt.open('qemu:///system')
+    virtual_machine = connection.lookupByName("Spack-VM")
+    virtual_machine.undefine()
+    connection.close()
 
-    for lib in libraries:
-        umount_bind_path(os.path.join(dir, lib[1:]))
+def run_command(username, password, commands):
+    connection = libvirt.open('qemu:///system')
+    virtual_machine = connection.lookupByName("Spack-VM")
+    if virtual_machine == None:
+        tty.die("Could not connect to the virtual machine")
 
-def isolate_enviroment():
+    networkInterface = virtual_machine.interfaceAddresses(libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_AGENT, 0)
+
+    ipAddress = None
+    for (name, val) in networkInterface.iteritems():
+        if val['addrs']:
+            for ipaddr in val['addrs']:
+                if ipaddr['type'] == libvirt.VIR_IP_ADDR_TYPE_IPV4:
+                    ipAddress = ipaddr['addr']
+                    break
+        if ipAddress != None
+            break
+
+    if ipAddress == None:
+        tty.die("Could not connect the the virtual machine")
+
+    command = ' && '.join([str(x) for x in commands])
+
+    ssh = which('ssh')
+    ssh('-t', '-p {0}'.format(password), '{0}@{1}'.format(username, ipAddress), command)
+    connection.close()
+
+def isolate_enviroment(username, password):
     tty.msg("Isolate spack")
 
-    lockFile = os.path.join(spack.spack_root, '.env')
-    existed = True
-    # check if the enviroment has to be generated
-    if not os.path.exists(lockFile):
-        build_chroot_enviroment(spack.spack_bootstrap_root)
-        existed = False
-
-    whoami = which("whoami", required=True)
-    username = whoami(output=str).replace('\n', '')
-    groups = which("groups", required=True)
-
-    # just use the first group
-    group = groups(username, output=str).split(':')[1].strip().split(' ')[0]
-
-    #restart the command in the chroot jail
-    os.system ("sudo chroot --userspec=%s:%s %s /home/spack/bin/spack %s"
-        % (username, group, spack.spack_bootstrap_root, ' '.join(sys.argv[1:])))
-
-    if not existed:
-        remove_chroot_enviroment(spack.spack_bootstrap_root)
+    run_command(username, password, '/home/spack/bin/spack {0}'.format(sys.argv[1:]))

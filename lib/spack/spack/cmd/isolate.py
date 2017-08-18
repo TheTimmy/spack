@@ -33,7 +33,8 @@ from spack.util.chroot import build_chroot_enviroment,  \
                               isolate_enviroment
 
 description = "starts an isolated bash session for spack"
-
+section = "admin"
+level = "long"
 
 def setup_parser(subparser):
     subparser.add_argument(
@@ -88,4 +89,6 @@ def isolate(parser, args):
 
     if args.start_enviroment:
         isolate_enviroment()
+
+        # TODO rewrite me to use unshare
         #os.system("sudo chroot %s /bin/bash" % (spack.spack_bootstrap_root))

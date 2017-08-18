@@ -49,6 +49,21 @@ def setup_parser(subparser):
     subparser.add_argument(
         '--isolate', action='store_true', dest='isolate',
         help="isolate the bootstraped enviroment from the system")
+    subparser.add_argument(
+        '--cores', action='store', dest='cores',
+        help="the amount of cores dedicated for the vm")
+    subparser.add_argument(
+        '--threads', action='store', dest='threads',
+        help="the amount of threads dedicated for the vm")
+    subparser.add_argument(
+        '--memory', action='store', dest='memory',
+        help="the amount of memory dedicated for the vm")
+    subparser.add_argument(
+        '--disk', action='store', dest='disk',
+        help="the location for the vm to store the data")
+    subparser.add_argument(
+        '--iso', action='store', dest='iso',
+        help="the iso to boot from")
 
 
 def get_origin_info(remote):
@@ -87,56 +102,60 @@ def adapt_config(install_dir):
     spack.config.update_config("config", config, "bootstrap")
 
 def bootstrap(parser, args):
-    origin_url, branch = "https://github.com/TheTimmy/spack", "features/bootstrap-packagesystem" #get_origin_info(args.remote)
+    origin_url, branch = "https://github.com/TheTimmy/spack", "features/bootstrap-vm" #get_origin_info(args.remote)
     prefix = args.prefix
     isolate = args.isolate
+
+    username = args.username
+    password = args.password
+
+    cores = args.cores
+    threads = args.threads
+    memory = args.memory
+    iso = args.iso
 
     tty.msg("Fetching spack from '%s': %s" % (args.remote, origin_url))
 
     if os.path.isfile(prefix):
         tty.die("There is already a file at %s" % prefix)
 
-    mkdirp(prefix)
-
     if isolate:
-        home = os.path.join(prefix, 'home')
-        tmp = os.path.join(prefix, 'tmp')
-        install_dir = os.path.join(home, 'spack')
-
-        mkdirp(home)
-        mkdirp(tmp)
-        mkdirp(install_dir)
         #generate and remove enviroment
-        build_chroot_enviroment(prefix)
-        remove_chroot_enviroment(prefix)
+        build_chroot_enviroment(cores, threads, memory, prefix, iso)
+
+        # copy the files via git to /home/spack in the vm
+        run_command(username, password,
+                    'mkdir /home/spack',
+                    'cd /home/spack/',
+                    'git init --shared -q',
+                    'git remote add origin {0}'.format(origin_url),
+                    'git fetch origin {0}:refs/remotes/origin/{0} -n -q'.format(branch),
+                    'git reset --hard origin/{0} -q'.format(branch),
+                    'git checkout -B {0} origin/{0} -q'.format(branch))
     else:
         install_dir = prefix
 
-    if os.path.exists(join_path(install_dir, '.git')):
-        tty.die("There already seems to be a git repository in %s" % prefix)
+        if os.path.exists(join_path(install_dir, '.git')):
+            tty.die("There already seems to be a git repository in %s" % prefix)
 
-    files_in_the_way = os.listdir(install_dir)
-    if files_in_the_way:
-        tty.die("There are already files there! "
-                "Delete these files before boostrapping spack.",
-                *files_in_the_way)
+        files_in_the_way = os.listdir(install_dir)
+        if files_in_the_way:
+            tty.die("There are already files there! "
+                    "Delete these files before boostrapping spack.",
+                    *files_in_the_way)
 
-    tty.msg("Installing:",
-            "%s/bin/spack" % install_dir,
-            "%s/lib/spack/..." % install_dir)
+        tty.msg("Installing:",
+                "%s/bin/spack" % install_dir,
+                "%s/lib/spack/..." % install_dir)
 
-    os.chdir(install_dir)
-    git = which('git', required=True)
-    git('init', '--shared', '-q')
-    git('remote', 'add', 'origin', origin_url)
-    git('fetch', 'origin', '%s:refs/remotes/origin/%s' % (branch, branch),
-                           '-n', '-q')
-    git('reset', '--hard', 'origin/%s' % branch, '-q')
-    git('checkout', '-B', branch, 'origin/%s' % branch, '-q')
+        os.chdir(install_dir)
+        git = which('git', required=True)
+        git('init', '--shared', '-q')
+        git('remote', 'add', 'origin', origin_url)
+        git('fetch', 'origin', '%s:refs/remotes/origin/%s' % (branch, branch),
+                               '-n', '-q')
+        git('reset', '--hard', 'origin/%s' % branch, '-q')
+        git('checkout', '-B', branch, 'origin/%s' % branch, '-q')
 
     tty.msg("Successfully created a new spack in %s" % prefix,
             "Run %s/bin/spack to use this installation." % prefix)
-
-    # at last change the config
-    if isolate:
-        adapt_config(install_dir)
